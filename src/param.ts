@@ -1,9 +1,5 @@
-import biliAPI from 'bili-api';
 import { Bot } from 'kokkoro-core';
 
-declare module 'bili-api' {
-
-}
 
 // 定时发送任务
 export let send_job: schedule.Job;
