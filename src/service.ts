@@ -1,31 +1,24 @@
-import axios from 'axios';
 import biliAPI from 'bili-api';
 import { join } from 'path';
 import { parse } from 'yaml';
 import { writeFile } from 'fs/promises';
-import { logger, deepClone } from 'kokkoro';
+import { logger, deepClone, deepMerge } from 'kokkoro';
 import { scheduleJob, Job } from 'node-schedule';
 import { readFileSync, mkdirSync, existsSync, writeFileSync } from 'fs';
 
-import { Dynamics, CardObject, DynamicsRaw, BiliInfo, LocalDynamic } from './type';
-
-// declare module 'bili-api' {
-
-// }
-
-let bili_data = '';
-let bili_dynamic: LocalDynamic = {};
+let local_data = '';
+let local_dynamic: LocalDynamic = {};
 const all_mid: Set<number> = new Set();
 
 export const bilibili_path = join(__workname, 'data/bilibili');
 const dynamic_path = join(bilibili_path, 'dynamic.json');
 
 try {
-  bili_data = readFileSync(dynamic_path, 'utf8');
-  bili_dynamic = parse(bili_data);
+  local_data = readFileSync(dynamic_path, 'utf8');
+  local_dynamic = parse(local_data);
 } catch (error) {
   !existsSync(bilibili_path) && mkdirSync(bilibili_path);
-  writeFileSync(dynamic_path, JSON.stringify(bili_dynamic));
+  writeFileSync(dynamic_path, JSON.stringify(local_dynamic));
 }
 
 // 获取所有订阅 id
@@ -52,9 +45,14 @@ export function getNickname(mid: number): Promise<string> {
   })
 }
 
-// 获取本地动态
+// 获取动态
 function getLocalDynamic(): LocalDynamic {
-  return deepClone(bili_dynamic);
+  return deepClone(local_dynamic);
+}
+
+// 写入动态
+function setLocalDynamic(bili_dynamic: LocalDynamic) {
+  local_dynamic = bili_dynamic;
 }
 
 // 获取动态
@@ -68,12 +66,12 @@ async function writeDynamic(dynamicsRaw: DynamicsRaw) {
   let uname: string;
 
   const local_dynamic = getLocalDynamic();
-  const dynamic_list: string[][] = [];
+  const dynamic_list: DynamicItem[] = [];
 
   for (const dynamic of dynamicsRaw) {
     const message: string[] = [];
     const { desc, card } = dynamic;
-    const { type, user_profile } = desc;
+    const { type, user_profile, dynamic_id } = desc;
     const { info } = user_profile;
     const card_object: CardObject = JSON.parse(card);
 
@@ -135,10 +133,10 @@ async function writeDynamic(dynamicsRaw: DynamicsRaw) {
     // 存储前 5 条动态
     if (dynamic_list.length > 4) break;
     if (message.length) {
-      dynamic_list.push(message);
+      dynamic_list.push({ dynamic_id, content: message });
     }
 
-    if (!local_dynamic[uid] || local_dynamic[uid][0] !== dynamic_list[0]) {
+    if (!local_dynamic[uid] || local_dynamic[uid][0].dynamic_id !== dynamic_list[0].dynamic_id) {
       local_dynamic[uid] = dynamic_list;
     }
   }
@@ -157,7 +155,7 @@ async function writeDynamic(dynamicsRaw: DynamicsRaw) {
 }
 
 // 动态更新任务
-const update_job: Job = scheduleJob('0 0/1 * * * ?', async () => {
+const update_job: Job = scheduleJob('0 0/5 * * * ?', async () => {
   const all_mid = getAllMid();
 
   for (let i = 0; i < all_mid.length; i++) {
@@ -181,14 +179,25 @@ function cancelUpdateSchedule() {
   update_job.cancel();
 }
 
-function updateDynamic(dynamic: LocalDynamic) {
-  Object
-  const new_dynamic = JSON.stringify(local_dynamic, null, 2);
+function updateDynamic(bili_dynamic: LocalDynamic) {
   const old_dynamic = JSON.stringify(getLocalDynamic(), null, 2);
+  const new_dynamic = JSON.stringify(bili_dynamic, null, 2);
 
   if (new_dynamic === old_dynamic && old_dynamic !== '{}') {
     return Promise.reject();
   }
 
+  setLocalDynamic(bili_dynamic);
   return writeFile(dynamic_path, new_dynamic);
+}
+
+// 获取动态信息
+export function getDynamicInfo(): DynamicInfo {
+  const dynamic_info: DynamicInfo = {};
+  const local_dynamic = getLocalDynamic();
+
+  for (const mid in local_dynamic) {
+    dynamic_info[mid] = local_dynamic[mid][0];
+  }
+  return dynamic_info;
 }

@@ -2,26 +2,57 @@ import { join } from 'path';
 import { stringify, parse } from 'yaml';
 import { writeFile, readFile } from 'fs/promises';
 import { Job, scheduleJob } from 'node-schedule';
-import { Extension, Bot, deepMerge } from 'kokkoro';
+import { Extension, Bot, deepMerge, deepClone, section } from 'kokkoro';
 
-import { addMid, bilibili_path, getNickname } from './service';
-import { DynamicConfig, MidList } from './type';
+import { addMid, bilibili_path, getDynamicInfo, getNickname } from './service';
+
+// Map<mid, dynamic_id>
+const dynamicInfo: Map<number, number> = new Map();
 
 export default class Bilibili implements Extension {
   bot: Bot;
   path: string;
   send_job: Job;
+  dynamic_info: DynamicInfo;
   dynamic_config!: DynamicConfig;
 
   constructor(bot: Bot) {
     this.bot = bot;
     this.send_job = this.autoSend();
+    this.dynamic_info = getDynamicInfo();
     this.path = join(bilibili_path, `${bot.uin}.yml`);
   }
 
   autoSend() {
-    return scheduleJob('0 0/5 * * * ?', async () => {
-      console.log('自动发送')
+    return scheduleJob('30 0/5 * * * ?', async () => {
+      const dynamic_info = getDynamicInfo();
+      const keys = Object.keys(dynamic_info).map(Number);
+
+      for (const mid of keys) {
+        const dynamic = dynamic_info[mid];
+
+        if (this.dynamic_info[mid] && (dynamic.dynamic_id === this.dynamic_info[mid].dynamic_id)) continue;
+
+        this.dynamic_info[mid] = dynamic;
+        this.bot.getGroupList().forEach(async group => {
+          const { group_id } = group;
+
+          // 该群是否订阅动态推送
+          if (this.dynamic_config[group_id]?.mid_list[mid].subscribe) {
+            const message: any[] = [`动态更新：${this.dynamic_config[group_id]?.mid_list[mid].nickname}\n\n`];
+
+            for (const segment of dynamic.content) {
+              if (!segment.startsWith('http')) {
+                message.push(segment);
+              } else {
+                const image = await section.image(segment);
+                message.push(image);
+              }
+            }
+            this.bot.sendGroupMsg(group_id, message);
+          }
+        })
+      }
     })
   }
 
@@ -65,7 +96,7 @@ export default class Bilibili implements Extension {
 
     for (const [group_id, group] of gl) {
       const group_name = group.group_name;
-      default_config[group_id] = { group_name, mid_list };
+      default_config[group_id] = { group_name, mid_list: deepClone(mid_list) };
     }
 
     try {

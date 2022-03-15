@@ -1,4 +1,41 @@
-export interface MidList {
+declare module 'bili-api' {
+  type Target = 'stat'
+    | 'info'
+    | 'view'
+    | 'list'
+    | '_notice'
+    | 'video'
+    | 'guardNum'
+    | 'guards'
+    | 'guardLevel'
+    | 'roundStatus'
+    | 'liveStatus'
+    | 'title'
+    | 'online'
+    | 'notice'
+    | 'archiveView'
+    | 'articleView'
+    | 'face'
+    | 'topPhoto'
+    | 'liveStartTime'
+    | 'mid'
+    | 'aid'
+    | 'bvid'
+    | 'roomid'
+    | 'rankdb'
+    | 'dynamics'
+    | 'dynamicOffset'
+    | 'uname';
+
+  interface BiliObject {
+    mid?: number;
+    uname?: string;
+  }
+
+  export default function (object: BiliObject, targets: Target[]): Promise<any>;
+}
+
+interface MidList {
   [mid: number]: {
     // b站昵称
     nickname: string;
@@ -7,24 +44,24 @@ export interface MidList {
   }
 }
 
-export interface Group {
+interface Group {
   // 群名称
   group_name: string;
   mid_list: MidList;
 }
 
-export interface DynamicConfig {
+interface DynamicConfig {
   // 监听 mid 列表
   mids: number[];
   // 群聊列表
   [group_id: number]: Group | undefined;
 }
 
-export interface Dynamics {
+interface Dynamics {
   dynamicsRaw: DynamicsRaw;
 }
 
-export interface Dynamic {
+interface Dynamic {
   desc: {
     uid: number;
     type: DynamicType;
@@ -41,14 +78,14 @@ export interface Dynamic {
   card: string;
 }
 
-export type DynamicsRaw = Dynamic[];
-export type DynamicType = 1 | 2 | 4 | 64;
+type DynamicsRaw = Dynamic[];
+type DynamicType = 1 | 2 | 4 | 64;
 
-export interface Picture {
+interface Picture {
   img_src: string;
 }
 
-export interface CardObject {
+interface CardObject {
   user: {
     uid: number;
     uname: string;
@@ -70,7 +107,7 @@ export interface CardObject {
   image_urls: string[];
 }
 
-export interface BiliInfo {
+interface BiliInfo {
   mid: number;
   info: {
     code: number;
@@ -112,6 +149,18 @@ export interface BiliInfo {
   uname: string;
 }
 
-export interface LocalDynamic {
-  [mid: number]: string[][];
+interface DynamicItem {
+  dynamic_id: number;
+  content: string[];
+}
+
+interface LocalDynamic {
+  [mid: number]: DynamicItem[];
+}
+
+interface DynamicInfo {
+  [mid: number]: {
+    dynamic_id: number;
+    content: string[];
+  };
 }
