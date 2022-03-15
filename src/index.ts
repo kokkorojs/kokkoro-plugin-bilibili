@@ -1,71 +1,39 @@
 import { join } from 'path';
 import { stringify, parse } from 'yaml';
-import { existsSync, readFileSync } from 'fs';
-import { mkdir, writeFile } from 'fs/promises';
-import { Extension, Bot } from 'kokkoro-core';
+import { writeFile, readFile } from 'fs/promises';
+import { Job, scheduleJob } from 'node-schedule';
+import { Extension, Bot, deepMerge } from 'kokkoro';
 
-const all_mid: Set<number> = new Set();
+import { addMid, bilibili_path, getNickname } from './service';
+import { DynamicConfig, MidList } from './type';
 
-// 获取所有 bot 的订阅
-export function getAllMid() {
-  return [...all_mid];
-}
-
-function deepMerge(target: any, sources: any): any {
-  const keys = Object.keys(sources);
-  const keys_length = keys.length;
-
-  for (let i = 0; i < keys_length; i++) {
-    const key = keys[i];
-
-    target[key] = typeof target[key] === 'object'
-      ? deepMerge(target[key], sources[key])
-      : sources[key];
-  }
-
-  return target;
-}
-
-const bilibili_path = join(__workname, '/data/bilibili');
-const bilibili_data = readFileSync(bilibili_path, 'utf8');
-export const bilibili_dynamic = parse(bilibili_data);
-
-interface MidList {
-  [mid: number]: {
-    // b站昵称
-    nickname: string;
-    // 是否订阅
-    subscribe: boolean;
-  }
-}
-
-interface Group {
-  // 群名称
-  group_name: string;
-  mid_list: MidList;
-}
-
-interface DynamicConfig {
-  // 监听 mid 列表
-  mids: number[];
-  // 群聊列表
-  [group_id: number]: Group | undefined;
-}
-
-export default class implements Extension {
+export default class Bilibili implements Extension {
   bot: Bot;
   path: string;
+  send_job: Job;
   dynamic_config!: DynamicConfig;
 
   constructor(bot: Bot) {
     this.bot = bot;
+    this.send_job = this.autoSend();
     this.path = join(bilibili_path, `${bot.uin}.yml`);
+  }
+
+  autoSend() {
+    return scheduleJob('0 0/5 * * * ?', async () => {
+      console.log('自动发送')
+    })
+  }
+
+  // 销毁定时任务
+  cancelSendSchedule() {
+    this.send_job.cancel();
   }
 
   onInit() {
     this.initBili()
       .then(() => {
-        this.bot.logger.mark(`已更新 ${this.path}.yml`)
+        this.bot.logger.mark(`已更新 ${this.path}`)
       })
       .catch(error => {
         this.bot.logger.error(error.message);
@@ -73,7 +41,7 @@ export default class implements Extension {
   }
 
   onDestroy() {
-
+    this.cancelSendSchedule();
   }
 
   async initBili() {
@@ -88,9 +56,10 @@ export default class implements Extension {
 
     for (let i = 0; i < mids_length; i++) {
       const mid = mids[i];
+      const nickname = await getNickname(mid);
 
       mid_list[mid] = {
-        nickname: 'unknown', subscribe: false,
+        nickname, subscribe: false,
       };
     }
 
@@ -100,18 +69,16 @@ export default class implements Extension {
     }
 
     try {
-      this.dynamic_config = parse(readFileSync(this.path, 'utf8'));
+      const config_data = await readFile(this.path, 'utf8');
+      this.dynamic_config = parse(config_data);
     } catch (error) {
       this.dynamic_config = { mids };
-
-      !existsSync(join(__workname, `/data`)) && await mkdir(join(__workname, `/data`));
-      await mkdir(bilibili_path);
     }
 
     this.dynamic_config = deepMerge(default_config, this.dynamic_config);
 
     for (const mid of this.dynamic_config.mids) {
-      all_mid.add(mid);
+      addMid(mid);
     }
 
     return await writeFile(this.path, stringify(this.dynamic_config));
