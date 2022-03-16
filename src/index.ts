@@ -4,7 +4,7 @@ import { writeFile, readFile } from 'fs/promises';
 import { Job, scheduleJob } from 'node-schedule';
 import { Extension, Bot, deepMerge, deepClone, section } from 'kokkoro';
 
-import { addMid, bilibili_path, getDynamicInfo, getNickname } from './service';
+import { addMid, bilibili_path, cancelUpdateSchedule, getDynamicInfo, getNickname } from './service';
 
 // Map<mid, dynamic_id>
 const dynamicInfo: Map<number, number> = new Map();
@@ -59,6 +59,7 @@ export default class Bilibili implements Extension {
   // 销毁定时任务
   cancelSendSchedule() {
     this.send_job.cancel();
+    cancelUpdateSchedule();
   }
 
   onInit() {
@@ -77,10 +78,20 @@ export default class Bilibili implements Extension {
 
   async initBili() {
     const gl = this.bot.getGroupList();
-    const mids = [
-      353840826,  // 公主连结ReDive
-      1731293061, // PCR公主连结日服情报站
-    ];
+
+    try {
+      const config_data = await readFile(this.path, 'utf8');
+      this.dynamic_config = parse(config_data);
+    } catch (error) {
+      const mids = [
+        353840826,  // 公主连结ReDive
+        1731293061, // PCR公主连结日服情报站
+      ];
+
+      this.dynamic_config = { mids };
+    }
+
+    const mids = this.dynamic_config.mids;
     const mids_length = mids.length;
     const default_config: DynamicConfig = { mids };
     const mid_list: MidList = {};
@@ -97,13 +108,6 @@ export default class Bilibili implements Extension {
     for (const [group_id, group] of gl) {
       const group_name = group.group_name;
       default_config[group_id] = { group_name, mid_list: deepClone(mid_list) };
-    }
-
-    try {
-      const config_data = await readFile(this.path, 'utf8');
-      this.dynamic_config = parse(config_data);
-    } catch (error) {
-      this.dynamic_config = { mids };
     }
 
     this.dynamic_config = deepMerge(default_config, this.dynamic_config);

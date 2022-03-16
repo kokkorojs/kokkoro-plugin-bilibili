@@ -175,7 +175,7 @@ const update_job: Job = scheduleJob('0 0/5 * * * ?', async () => {
 });
 
 // 销毁更新任务
-function cancelUpdateSchedule() {
+export function cancelUpdateSchedule() {
   update_job.cancel();
 }
 
